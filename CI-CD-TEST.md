@@ -1,0 +1,1 @@
+﻿# Veltrix CI/CD verification
