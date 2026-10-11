@@ -45,7 +45,7 @@ jobs:
           DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           if ([string]::IsNullOrWhiteSpace($env:DOCKERHUB_USERNAME) -or
-              [string]::IsNullOrWhiteSpace($env:DOCKERHUB_PASSWORD)) {
+              [string]::IsNullOrWhiteSpace($env:DOCKERHUB_TOKEN)) {
             throw "Docker Hub credentials are missing."
           }
 
