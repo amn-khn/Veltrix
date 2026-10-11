@@ -87,6 +87,7 @@ jobs:
           }
 
       
+      
       - name: Pull exact commit image from Docker Hub
         shell: powershell
         env:
@@ -94,11 +95,18 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
         run: |
+          $ErrorActionPreference = "Stop"
+
+          if ([string]::IsNullOrWhiteSpace($env:DOCKERHUB_USERNAME) -or
+              [string]::IsNullOrWhiteSpace($env:DOCKERHUB_PASSWORD)) {
+            throw "Docker Hub credentials are missing."
+          }
+
           $env:DOCKERHUB_PASSWORD |
             docker login --username $env:DOCKERHUB_USERNAME --password-stdin
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Docker Hub login failed on the deployment runner."
+            throw "Docker Hub authentication failed. Check the secret value."
           }
 
           docker pull "amxnn/veltrix:$env:IMAGE_TAG"
@@ -110,6 +118,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to load the image into kind."
           }
+
 
       - name: Deploy exact commit image
         env:
