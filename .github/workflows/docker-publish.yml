@@ -35,3 +35,20 @@ jobs:
           tags: |
             amxnn/veltrix:1.0
             amxnn/veltrix:latest
+      - name: Notify Slack on success
+        if: success()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"✅ Veltrix CI/CD succeeded! Docker image amxnn/veltrix:latest has been built and pushed. Commit: $GITHUB_SHA\"}" \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"❌ Veltrix CI/CD failed. Check GitHub Actions logs: https://github.com/amn-khn/Veltrix/actions\"}" \
+            "$SLACK_WEBHOOK_URL"
