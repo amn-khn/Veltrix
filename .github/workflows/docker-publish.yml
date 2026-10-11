@@ -22,40 +22,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate required tools
+      - name: Validate tools and Kubernetes access
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
 
           foreach ($tool in @("docker", "kubectl", "kind")) {
             if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-              throw "$tool is not installed or is not available in PATH."
+              throw "$tool is missing or unavailable in PATH."
             }
           }
 
           kubectl --context kind-veltrix get nodes
           if ($LASTEXITCODE -ne 0) {
-            throw "Cannot access the kind-veltrix cluster."
+            throw "Cannot access kind-veltrix."
           }
 
       - name: Log in to Docker Hub
         shell: powershell
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          $ErrorActionPreference = "Stop"
-
           if ([string]::IsNullOrWhiteSpace($env:DOCKERHUB_USERNAME) -or
-              [string]::IsNullOrWhiteSpace($env:DOCKERHUB_TOKEN)) {
-            throw "Docker Hub GitHub secrets are missing."
+              [string]::IsNullOrWhiteSpace($env:DOCKERHUB_PASSWORD)) {
+            throw "Docker Hub credentials are missing."
           }
 
-          $env:DOCKERHUB_TOKEN |
+          $env:DOCKERHUB_PASSWORD |
             docker login --username $env:DOCKERHUB_USERNAME --password-stdin
 
           if ($LASTEXITCODE -ne 0) {
-            throw "Docker Hub login failed. Check your username and access token."
+            throw "Docker Hub login failed. Check the GitHub Secrets."
           }
 
       - name: Build Docker image
@@ -64,18 +62,17 @@ jobs:
         env:
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          $ErrorActionPreference = "Stop"
           $tag = $env:COMMIT_SHA
           $image = "amxnn/veltrix:$tag"
 
           docker build --pull -t $image .
           if ($LASTEXITCODE -ne 0) {
-            throw "Docker image build failed."
+            throw "Docker build failed."
           }
 
           "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: Push Docker image to Docker Hub
+      - name: Push image to Docker Hub
         shell: powershell
         env:
           IMAGE_TAG: ${{ github.sha }}
@@ -108,17 +105,17 @@ jobs:
         run: |
           kind load docker-image "amxnn/veltrix:$env:IMAGE_TAG" --name veltrix
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to load the image into kind."
+            throw "Loading image into kind failed."
           }
 
-      - name: Deploy to Kubernetes
+      - name: Deploy Veltrix
         shell: powershell
         env:
           IMAGE_TAG: ${{ needs.ci.outputs.image_tag }}
         run: |
           kubectl --context kind-veltrix set image deployment/veltrix "veltrix=amxnn/veltrix:$env:IMAGE_TAG"
           if ($LASTEXITCODE -ne 0) {
-            throw "Failed to update the deployment image."
+            throw "Updating the deployment image failed."
           }
 
           kubectl --context kind-veltrix rollout status deployment/veltrix --timeout=180s
@@ -127,7 +124,7 @@ jobs:
           }
 
           kubectl --context kind-veltrix get deployment veltrix
-          kubectl --context kind-veltrix get pods -l app=veltrix
+          kubectl --context kind-veltrix get pods
 
   notify:
     name: Notify Slack
@@ -136,7 +133,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
 
     steps:
-      - name: Send deployment result to Slack
+      - name: Send CI/CD result to Slack
         shell: powershell
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -144,8 +141,6 @@ jobs:
           CD_RESULT: ${{ needs.cd.result }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          $ErrorActionPreference = "Stop"
-
           if ([string]::IsNullOrWhiteSpace($env:SLACK_WEBHOOK_URL)) {
             throw "SLACK_WEBHOOK_URL secret is missing."
           }
@@ -157,4 +152,8 @@ jobs:
           }
 
           $body = @{ text = $message } | ConvertTo-Json -Compress
-          Invoke-RestMethod -Uri $env:SLACK_WEBHOOK_URL -Method Post -ContentType "application/json" -Body $body
+
+          Invoke-RestMethod -Uri $env:SLACK_WEBHOOK_URL `
+            -Method Post `
+            -ContentType "application/json" `
+            -Body $body
